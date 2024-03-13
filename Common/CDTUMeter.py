@@ -1,6 +1,6 @@
 class CDTUMeter:
-    def __init__(self):
-        self.m_mid = "1".zfill(12)[:12]  # Python's zfill is similar to PadLeft
+    def __init__(self, meter_id="1"):
+        self.m_mid = meter_id.zfill(12)[:12]  # Adjusted to use the provided meter_id
         self.m_did = "0".zfill(24)[:24]
         self.DTU = None  # Assuming DTU is another class you will define
         self.UserID = 0

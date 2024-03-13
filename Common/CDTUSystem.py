@@ -4,6 +4,10 @@ import socket
 import serial
 import asyncio
 from .CDTUSystemOption import CDTUSystemOption
+from .CDTUSystemReadMode import CDTUSystemReadMode
+from .RSCommon.RSMacLayer import RSMacLayer, RSMacOperate
+from enum import Enum
+
 
 class CDTUSystem:
     def __init__(self, option: CDTUSystemOption):
@@ -17,9 +21,15 @@ class CDTUSystem:
         self.m_macError = ""
 
     async def connect_socket(self, host, port):
+        # Create a non-blocking socket using asyncio's loop
         self.m_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        await asyncio.wait_for(self.m_socket.connect((host, port)), timeout=self.m_timeout)
-        self.m_socket.setblocking(False)
+        self.m_socket.setblocking(False)  # Set socket to non-blocking mode
+
+        # Get the current event loop
+        loop = asyncio.get_running_loop()
+
+        # Wait for the socket to connect
+        await loop.sock_connect(self.m_socket, (host, port))
 
     def connect(self):
         if self.m_serial:
@@ -30,8 +40,8 @@ class CDTUSystem:
             self.m_socket.close()
             self.m_socket = None
 
-        self.m_local = self.option.ReadMode != 'DTU_Remote_Read'
-        self.m_timeout = self.option.WaitTimeOut_Remote if self.option.ReadMode == 'DTU_Remote_Read' else self.option.WaitTimeOut_Local
+        self.m_local = self.option.ReadMode != CDTUSystemReadMode.DTU_Remote_Read
+        self.m_timeout = self.option.WaitTimeOut_Remote if self.option.ReadMode == CDTUSystemReadMode.DTU_Remote_Read else self.option.WaitTimeOut_Local
 
         if self.m_local:
             # Assuming SerialMeter is a serial.Serial instance or similar
@@ -68,7 +78,7 @@ class CDTUSystem:
         # In Python, we directly assign the method reference instead of using event handlers
         rsCommDLT645Ex.do_mac = self.do_mac
         rsCommDLT645Ex.handle_message = self.handle_message
-        rsCommDLT645Ex.attempt_times = self.Option.Attempts
+        rsCommDLT645Ex.attempt_times = self.option.Attempts
         rsCommDLT645Ex.serial = self.m_serial
 
         tx_frame = RSFrame645Ex()
@@ -113,11 +123,49 @@ class CDTUSystem:
 
 
 # Placeholder for event handlers and classes not defined in the provided code
-def do_mac():
-    pass
+    def handle_message(self, sender, event_args):
+        # Perform the necessary event handling logic here
+        print("Event handled")
+
+    def do_mac(self, sender, mac):
+        if mac.MacOperate == RSMacOperate.Mac_Send:
+            self.mac_send(mac.TxBuf)
+        elif mac.MacOperate == RSMacOperate.Mac_Receive:
+            mac.RxBuf = self.mac_recv()
+            if self.m_macError:  # Checking if m_macError has a truthy value
+                mac.MacError = True
+        elif mac.MacOperate == RSMacOperate.Mac_Clear:
+            if self.m_local:
+                self.m_serial.reset_input_buffer()  # Assuming m_serial is a pySerial Serial object
+            else:
+                self.m_socket.clear_available()  # This method needs to be implemented in your socket handling class
+
+    async def mac_recv(self):
+        if self.m_local:
+            bytes_to_read = self.m_serial.in_waiting  # BytesToRead equivalent in pySerial
+            if bytes_to_read <= 0:
+                return None
+            buffer = self.m_serial.read(bytes_to_read)
+            return buffer
+        else:
+            # Assuming m_socket has a WaitForData method implemented,
+            # you would need to adapt it for Python. This is a placeholder
+            # for whatever method you use to receive data from the socket.
+            data = await self.m_socket.wait_for_data()  # This method needs to be implemented based on your socket handling
+            if data is None:
+                return None
+            num = len(data)
+            count = data[17] * 256 + data[18]
+            array = data[19:19+count]
+            if count == 9 and array.decode("utf-8") == "No Online":
+                self.m_macError = "DTU No Online"
+                return None
+            elif count == 7 and array.decode("utf-8") == "DTU Busy":
+                self.m_macError = "DTU Busy"
+                return None
+            return array
 
 
-def handle_message():
-    pass
+
 
 

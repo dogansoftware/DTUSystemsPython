@@ -49,7 +49,7 @@ class RSCommDLT645Ex:
             self.m_mac.mac_error = False
             self.DoMac(self, self.m_mac)
         else:
-            self.Serial.discard_in_buffer()
+            self.Serial.serial_port.reset_input_buffer()
 
     def on_serial_comm(self, data):
         if not self.AutoReceive:
