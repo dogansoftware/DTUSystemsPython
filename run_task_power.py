@@ -8,8 +8,8 @@ from Common.CDTUSystemReadMode import CDTUSystemReadMode
 def task_power(system, meter_id="600000763434", flag=1):
     system.connect()
     # Initialize meter with the provided ID
-    meter = CDTUMeter(meter_id)
-
+    meter = CDTUMeter()
+    meter.DID = meter_id
     print(f"Processing {meter.MID}...")
     if system.power(meter, flag):
         power_status = "Power On" if meter.PowerStatus == 1 else "Power Off"

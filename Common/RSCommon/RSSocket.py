@@ -2,46 +2,37 @@ import asyncio
 import socket
 
 class RSSocket:
-    def __init__(self, address_family, socket_type, protocol_type):
-        self.address_family = address_family
-        self.socket_type = socket_type
-        self.protocol_type = protocol_type
-        self.socket = socket.socket(self.address_family, self.socket_type, self.protocol_type)
-        self.m_stop = False
-        self.m_closed = False
-        self.m_asyncAvailable = 0
-        self.UserObject = None
+    def __init__(self):
+        self.socket = None
+        self.connected = False  # Track connection status
 
     async def connect(self, host, port):
-        await self.loop.sock_connect(self.socket, (host, port))
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setblocking(False)
-        print("Connected")
+        try:
+            await asyncio.get_running_loop().sock_connect(self.socket, (host, port))
+            print("Connected")
+            self.connected = True
+        except Exception as e:
+            print(f"Connection failed: {e}")
+            self.connected = False
 
     async def send(self, data):
-        if self.m_closed:
+        if not self.connected:
+            print("Socket is not connected.")
             return
-        await self.loop.sock_sendall(self.socket, data)
-        print("Data sent")
+        if isinstance(data, str):
+            data = data.encode()  # Encode if data is string
+        await asyncio.get_running_loop().sock_sendall(self.socket, data)
 
-    async def receive(self):
-        if self.m_closed:
-            return
-        data = await self.loop.sock_recv(self.socket, 4096)  # Adjust buffer size as needed
-        self.m_asyncAvailable = len(data)
-        print("Data received")
-        return data
+    async def receive(self, bufsize=4096):
+        if not self.connected:
+            print("Socket is not connected.")
+            return None
+        return await asyncio.get_running_loop().sock_recv(self.socket, bufsize)
 
     def close(self):
-        self.socket.close()
-        self.m_closed = True
-        print("Socket closed")
-
-    def run(self, host, port):
-        self.loop = asyncio.get_event_loop()
-        try:
-            self.loop.run_until_complete(self.connect(host, port))
-            # The loop for send/receive operations can be added here
-        finally:
-            self.loop.close()
-
-
+        if self.connected:
+            self.socket.close()
+            self.connected = False
+            print("Socket closed")

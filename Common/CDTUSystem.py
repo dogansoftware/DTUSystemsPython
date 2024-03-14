@@ -1,18 +1,16 @@
 from Common.RSCommon.DLT645.RSCommDLT645Ex import RSCommDLT645Ex
 from Common.RSCommon.DLT645.RSFrame645Ex import RSFrame645Ex
-import socket
-import serial
 import asyncio
 from .CDTUSystemOption import CDTUSystemOption
 from .CDTUSystemReadMode import CDTUSystemReadMode
 from .RSCommon.RSMacLayer import RSMacLayer, RSMacOperate
-from enum import Enum
+from .RSCommon.RSSocket import RSSocket
 
 
 class CDTUSystem:
     def __init__(self, option: CDTUSystemOption):
         self.option = option
-        self.m_socket = None
+        self.m_socket = RSSocket()  # Assuming RSSocket() is properly initialized elsewhere
         self.m_serial = None
         self.m_did = ""
         self.m_local = True
@@ -20,28 +18,10 @@ class CDTUSystem:
         self.m_timeout = None
         self.m_macError = ""
 
-    async def connect_socket(self, host, port):
-        # Create a non-blocking socket using asyncio's loop
-        self.m_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.m_socket.setblocking(False)  # Set socket to non-blocking mode
-
-        # Get the current event loop
-        loop = asyncio.get_running_loop()
-
-        # Wait for the socket to connect
-        await loop.sock_connect(self.m_socket, (host, port))
-
-    def connect(self):
-        if self.m_serial:
-            self.m_serial.close()
-            self.m_serial = None
-
-        if self.m_socket:
-            self.m_socket.close()
-            self.m_socket = None
-
+    async def connect_async(self):
+        # Simplify the decision-making process for connecting either via Serial or Socket
         self.m_local = self.option.ReadMode != CDTUSystemReadMode.DTU_Remote_Read
-        self.m_timeout = self.option.WaitTimeOut_Remote if self.option.ReadMode == CDTUSystemReadMode.DTU_Remote_Read else self.option.WaitTimeOut_Local
+        self.m_timeout = self.option.WaitTimeOut_Remote if not self.m_local else self.option.WaitTimeOut_Local
 
         if self.m_local:
             # Assuming SerialMeter is a serial.Serial instance or similar
@@ -50,25 +30,27 @@ class CDTUSystem:
         else:
             host, port_str = self.option.RemoteHost.split(':')
             port = int(port_str)
-            asyncio.run(self.connect_socket(host, port))
+            await self.m_socket.connect(host, port)
+
+    def connect(self):
+        # Use asyncio to manage asynchronous connection
+        asyncio.run(self.connect_async())
 
     def disconnect(self):
+        # Properly manage disconnecting resources
         if self.m_serial:
             self.m_serial.close()
             self.m_serial = None
 
-        if self.m_socket:
+        if self.m_socket and self.m_socket.connected:
             self.m_socket.close()
-            self.m_socket = None
+
     def power(self, meter, flag):
         self.m_stop = False
         self.m_did = meter.DID
         self.m_macError = ""
         if meter.ProtocolType in (0, 1):
             return self.dlt645_comm(meter, flag)
-
-        # The original C# method checks protocol type again and returns False by default
-        # It seems like a placeholder for additional conditions or protocols
         return False
 
     def dlt645_comm(self, meter, flag):
