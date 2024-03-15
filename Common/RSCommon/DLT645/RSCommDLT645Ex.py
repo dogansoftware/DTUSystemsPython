@@ -1,87 +1,90 @@
 from Common.RSCommon.DLT645.RSFrame645Ex import RSFrame645Ex
 from Common.RSCommon.RSMacLayer import RSMacLayer
+from Common.RSCommon.RSMacOperate import RSMacOperate
 from Common.RSCommon.Serial.RSSerial import RSSerial
-
+import time
+from threading import Thread
 
 class RSCommDLT645Ex:
+    BUFFER_SIZE = 1024
+
     def __init__(self):
-        self.BUFFER_SIZE = 1024
         self.m_stop = False
         self.m_auto = False
         self.m_mac = RSMacLayer()
         self.m_rx = bytearray()
-        self.Serial = RSSerial()
-        self.Serial.baudrate = 9600
-        self.Serial.data_received_callback = self.on_serial_comm
+        self.Serial = RSSerial()  # Adjust with your Serial configuration
         self.WaitTimeout = 5000
         self.AutoReceive = False
         self.AttemptTimes = 1
-        self.HandleMessage = None
-        self.DoMac = None
-        self.OnReceive = None
+        self.HandleMessage = None  # Placeholder for event handler
+        self.DoMac = None  # Placeholder for event handler
+        self.OnReceive = None  # Placeholder for event handler
+        self.m_macError = ""
 
     def mac_recv(self):
-        if self.DoMac is not None:
-            self.m_mac.mac_operate = RSMacLayer.RSMacOperate.Mac_Receive
-            self.m_mac.mac_error = False
-            self.DoMac(self, self.m_mac)
-            return self.m_mac.rxbuff
-
-        bytes_to_read = self.Serial.bytes_to_read()
-        if bytes_to_read <= 0:
-            return bytearray()
-
-        array = self.Serial.read(bytes_to_read)
-        return array
+        if self.Serial.serial_port.is_open and self.Serial.in_waiting > 0:
+            return self.Serial.read(self.Serial.in_waiting)
+        return bytearray()
 
     def mac_send(self, buf):
-        if self.DoMac is not None:
-            self.m_mac.mac_operate = RSMacLayer.RSMacOperate.Mac_Send
-            self.m_mac.mac_error = False
-            self.m_mac.txbuff = buf
-            self.DoMac(self, self.m_mac)
-        else:
-            self.Serial.write(buf)
+        self.Serial.write(buf)
 
     def mac_clear(self):
-        if self.DoMac is not None:
-            self.m_mac.mac_operate = RSMacLayer.RSMacOperate.Mac_Clear
-            self.m_mac.mac_error = False
-            self.DoMac(self, self.m_mac)
-        else:
-            self.Serial.serial_port.reset_input_buffer()
+        self.Serial.discard_in_buffer()
 
-    def on_serial_comm(self, data):
-        if not self.AutoReceive:
-            return
+    def do_mac(self, mac: RSMacLayer):
+        if mac.MacOperate == RSMacOperate.Mac_Send:
+            self.mac_send(mac.TxBuf)
+        elif mac.MacOperate == RSMacOperate.Mac_Receive:
+            mac.RxBuf = self.mac_recv()
+            if self.m_macError:
+                mac.MacError = True
+        elif mac.MacOperate == RSMacOperate.Mac_Clear:
+            self.mac_clear()
 
-        self.m_rx.extend(data)
-        # Processing logic for received data
-        # This is a simplified version. You'll need to adjust it based on your actual data processing needs.
-        rSFrame645Ex = RSFrame645Ex()
-        bytes_read = rSFrame645Ex.pick_frame(self.m_rx)
-        if bytes_read >= 0:
-            if self.OnReceive is not None:
-                self.OnReceive(self, rSFrame645Ex)
-            # Adjust based on the frame length and processing logic
-            self.m_rx = self.m_rx[bytes_read:]
+    def on_serial_comm(self):
+        # Simulate SerialDataReceivedEventHandler
+        while self.AutoReceive and not self.m_stop:
+            data = self.mac_recv()
+            if data:
+                self.m_rx.extend(data)
+                # Assuming RSFrame645Ex can parse frames from m_rx
+                frame = RSFrame645Ex.try_parse(self.m_rx)
+                if frame:
+                    if self.OnReceive:
+                        self.OnReceive(self, frame)
+                    # Remove processed data from m_rx
+                    self.m_rx = self.m_rx[len(frame):]
+
+            time.sleep(0.1)  # Prevent tight loop
+
+    def start_auto_receive(self):
+        self.AutoReceive = True
+        thread = Thread(target=self.on_serial_comm)
+        thread.start()
 
     def stop(self):
         self.m_stop = True
 
-    def send(self, tx_frame):
-        self.mac_send(tx_frame.build_frame())
+    def send(self, tx_frame: RSFrame645Ex):
+        self.mac_send(tx_frame.BuildFrame())
 
     def recv(self):
+        if not self.Serial.serial_port.is_open:
+            print("Serial port is not open.")
+            return []
         self.m_stop = False
-        rSFrame645Ex = RSFrame645Ex()
-        # Placeholder for receive logic
+        received_frames = []
+        start_time = time.time()
+        while (time.time() - start_time) < (self.WaitTimeout / 1000) and not self.m_stop:
+            if self.Serial.in_waiting > 0:
+                data = self.Serial.read(self.Serial.in_waiting)
+                # Process data...
+        return received_frames
 
-    def comm(self, tx_frame):
+    def comm(self, tx_frame: RSFrame645Ex):
         self.mac_clear()
-        for _ in range(self.AttemptTimes):
-            self.send(tx_frame)
-            received_frame = self.recv()
-            if received_frame is not None:
-                return received_frame
-        return None
+        self.send(tx_frame)
+        received_frame = self.recv()
+        return received_frame

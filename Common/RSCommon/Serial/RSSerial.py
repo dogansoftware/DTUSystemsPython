@@ -1,6 +1,5 @@
 import serial
 from serial.tools import list_ports
-import threading
 import xml.etree.ElementTree as ET
 import os
 
@@ -44,6 +43,16 @@ class RSSerial:
         if self.serial_port.is_open:
             self.serial_port.write(data)
 
+    # Added in_waiting property
+    @property
+    def in_waiting(self):
+        return self.serial_port.in_waiting
+
+    # Added discard_in_buffer method
+    def discard_in_buffer(self):
+        if self.serial_port.is_open:
+            self.serial_port.reset_input_buffer()
+
     def save_config(self, file_name):
         config = ET.Element('SerialConfig')
         general = ET.SubElement(config, 'General')
@@ -59,11 +68,7 @@ class RSSerial:
             config = tree.getroot().find('General')
             for attr in config:
                 if hasattr(self.serial_port, attr.tag):
-                    # Handle types accordingly, this example just shows the approach
                     setattr(self.serial_port, attr.tag, attr.text)
 
     def __str__(self):
         return f"{self.serial_port.port}: {self.serial_port.baudrate},{self.serial_port.parity},{self.serial_port.bytesize},{self.serial_port.stopbits}; Rts={self.serial_port.rtscts},Dtr={self.serial_port.dsrdtr};"
-
-    # Implement WaitForData, ShowConfig, and ondata methods as required for your application
-
