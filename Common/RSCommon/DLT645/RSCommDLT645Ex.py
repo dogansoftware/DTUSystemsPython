@@ -76,11 +76,25 @@ class RSCommDLT645Ex:
             return []
         self.m_stop = False
         received_frames = []
+        buffer = bytearray()
         start_time = time.time()
+
         while (time.time() - start_time) < (self.WaitTimeout / 1000) and not self.m_stop:
             if self.Serial.in_waiting > 0:
                 data = self.Serial.read(self.Serial.in_waiting)
-                # Process data...
+                buffer.extend(data)
+
+                while True:
+                    # Attempt to parse a frame from the buffer
+                    success, frame = RSFrame645Ex.try_parse(buffer)
+                    if success:
+                        received_frames.append(frame)
+                        # Assuming frame also provides its total length, so we know how much to slice off the buffer
+                        frame_len = frame.GetFrameLen()
+                        buffer = buffer[frame_len:]  # Remove processed frame from buffer
+                    else:
+                        break  # Exit the loop if no valid frame could be parsed from the current buffer
+
         return received_frames
 
     def comm(self, tx_frame: RSFrame645Ex):
