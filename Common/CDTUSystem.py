@@ -46,16 +46,16 @@ class CDTUSystem:
         if self.m_socket and self.m_socket.connected:
             self.m_socket.close()
 
-    def power(self, meter, flag):
+    async def power(self, meter, flag):
         self.m_stop = False
         self.m_did = meter.DID
         self.m_macError = ""
         if meter.ProtocolType in (0, 1):
-            return self.dlt645_comm(meter, flag)
+            return await self.dlt645_comm(meter, flag)
         return False
 
-    def dlt645_comm(self, meter, flag):
-        rsCommDLT645Ex = RSCommDLT645Ex()
+    async def dlt645_comm(self, meter, flag):
+        rsCommDLT645Ex = RSCommDLT645Ex(self.m_socket, self.m_did)
 
         # In Python, we directly assign the method reference instead of using event handlers
         rsCommDLT645Ex.do_mac = self.do_mac
@@ -77,7 +77,7 @@ class CDTUSystem:
         else:
             tx_frame.ctrl_word = 17
 
-        rs_frames = rsCommDLT645Ex.comm(tx_frame)
+        rs_frames = await rsCommDLT645Ex.comm(tx_frame)
         success = False
         for rs_frame in rs_frames:
             if rs_frame.address != meter.MID:

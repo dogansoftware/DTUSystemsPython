@@ -5,13 +5,13 @@ from Common.CDTUSystemOption import CDTUSystemOption
 from Common.CDTUSystemReadMode import CDTUSystemReadMode
 
 
-def task_power(system, meter_id="600000763434", flag=1):
-    system.connect()
+async def task_power(system, meter_id="600000763434", flag=1):
+    await system.connect_async()
     # Initialize meter with the provided ID
     meter = CDTUMeter()
     meter.DID = meter_id
     print(f"Processing {meter.MID}...")
-    if system.power(meter, flag):
+    if await system.power(meter, flag):
         power_status = "Power On" if meter.PowerStatus == 1 else "Power Off"
         print(f"{meter.MID}: {power_status}")
     else:
@@ -42,4 +42,5 @@ if __name__ == "__main__":
 
     # Create an instance of CDTUSystem with the configured option
     system = CDTUSystem(option)
-    task_power(system, meter_id, flag)
+    import asyncio
+    asyncio.run(task_power(system, meter_id, flag))
